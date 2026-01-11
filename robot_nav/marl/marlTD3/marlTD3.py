@@ -7,8 +7,8 @@ import torch.nn.functional as F
 from numpy import inf
 from torch.utils.tensorboard import SummaryWriter
 
-from robot_nav.models.MARL.Attention.g2anet import G2ANet
-from robot_nav.models.MARL.Attention.iga import Attention
+from robot_nav.marl.Attention.g2anet import G2ANet
+from robot_nav.marl.Attention.iga import Attention
 
 
 class Actor(nn.Module):

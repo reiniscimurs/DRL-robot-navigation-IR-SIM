@@ -7,6 +7,7 @@ from robot_nav.SIM_ENV.dev_sim import DEV_SIM
 from robot_nav.utils import get_buffer
 import math
 
+
 def main(args=None):
     """Main training function"""
     action_dim = 2  # number of actions produced by the model
@@ -81,23 +82,29 @@ def main(args=None):
     )  # get the initial step state
 
     while epoch < max_epochs:  # train until max_epochs is reached
-        switch = bool(episode%2)
+        switch = bool(episode % 2)
         state, terminal = train_model.prepare_state(
             latest_scan, distance, cos, sin, collision, goal, a
         )  # get state a state representation from returned data from the environment
-        action = train_model.get_action(np.array(state), True)  # get an action from the model
-        dev_state, _ = deviation_model.prepare_state(latest_scan, distance, cos, sin, collision, goal, action)
+        action = train_model.get_action(
+            np.array(state), True
+        )  # get an action from the model
+        dev_state, _ = deviation_model.prepare_state(
+            latest_scan, distance, cos, sin, collision, goal, action
+        )
         override_action = deviation_model.get_action(np.array(dev_state), ~switch)
         latest_scan, distance, cos, sin, collision, goal, a, reward = sim.step(
-            lin_velocity=action[0], ang_velocity=action[1], override_lin=override_action[0], override_ang=override_action[1], switch=switch
+            lin_velocity=action[0],
+            ang_velocity=action[1],
+            override_lin=override_action[0],
+            override_ang=override_action[1],
+            switch=switch,
         )  # get data from the environment
         if switch:
             next_state, terminal = train_model.prepare_state(
                 latest_scan, distance, cos, sin, collision, goal, a
             )
-            train_replay_buffer.add(
-                state, action, reward, terminal, next_state
-            )
+            train_replay_buffer.add(state, action, reward, terminal, next_state)
         else:
             next_state, terminal = deviation_model.prepare_state(
                 latest_scan, distance, cos, sin, collision, goal, a
@@ -135,11 +142,16 @@ def main(args=None):
             epoch += 1
             evaluate(train_model, epoch, sim, eval_episodes=nr_eval_episodes)
 
-def compute_action(dist, sin_theta, cos_theta,
-                   k_v=0.8,      # linear gain
-                   k_w=1.5,      # angular gain
-                   v_max=0.5,    # max linear velocity (m/s)
-                   w_max=1):   # max angular velocity (rad/s)
+
+def compute_action(
+    dist,
+    sin_theta,
+    cos_theta,
+    k_v=0.8,  # linear gain
+    k_w=1.5,  # angular gain
+    v_max=0.5,  # max linear velocity (m/s)
+    w_max=1,
+):  # max angular velocity (rad/s)
     """
     Compute linear and angular velocity commands for a differential drive robot
     given polar coordinates of the goal.
@@ -156,7 +168,7 @@ def compute_action(dist, sin_theta, cos_theta,
     Returns:
         v, w: linear and angular velocities
     """
-    theta = math.atan2(sin_theta, cos_theta)   # in [-pi, pi]
+    theta = math.atan2(sin_theta, cos_theta)  # in [-pi, pi]
     w = k_w * theta
 
     v = k_v * dist
@@ -186,7 +198,11 @@ def evaluate(model, epoch, sim, eval_episodes=10):
             action = model.get_action(np.array(state), False)
             # a_in = [(action[0] + 1) / 4, action[1]]
             latest_scan, distance, cos, sin, collision, goal, a, reward = sim.step(
-                lin_velocity=action[0], ang_velocity=action[1], override_lin=0, override_ang=0, switch=True
+                lin_velocity=action[0],
+                ang_velocity=action[1],
+                override_lin=0,
+                override_ang=0,
+                switch=True,
             )
             avg_reward += reward
             count += 1

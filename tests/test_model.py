@@ -10,7 +10,7 @@ from robot_nav.models.SAC.SAC import SAC
 from robot_nav.models.DDPG.DDPG import DDPG
 from robot_nav.utils import get_buffer
 from robot_nav.SIM_ENV.sim import SIM
-from robot_nav.models.MARL.marlTD3.marlTD3 import TD3 as marlTD3
+from robot_nav.marl.marlTD3.marlTD3 import TD3 as marlTD3
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

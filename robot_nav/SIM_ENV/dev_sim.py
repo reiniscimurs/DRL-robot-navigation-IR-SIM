@@ -15,7 +15,14 @@ class DEV_SIM(SIM):
         robot_goal (np.ndarray): The goal position of the robot.
     """
 
-    def step(self, lin_velocity=0.0, ang_velocity=0.1, override_lin=-0.0, override_ang=-0.1, switch=0):
+    def step(
+        self,
+        lin_velocity=0.0,
+        ang_velocity=0.1,
+        override_lin=-0.0,
+        override_ang=-0.1,
+        switch=0,
+    ):
         """
         Perform one step in the simulation using the given control commands.
 
@@ -27,13 +34,13 @@ class DEV_SIM(SIM):
             (tuple): Contains the latest LIDAR scan, distance to goal, cosine and sine of angle to goal,
                    collision flag, goal reached flag, applied action, and computed reward.
         """
-        action = [(lin_velocity+1)/4, ang_velocity]
-        override_action = [override_lin/2, override_ang*2]
+        action = [(lin_velocity + 1) / 4, ang_velocity]
+        override_action = [override_lin / 2, override_ang * 2]
         if switch:
             a_in = action[:]
         else:
             a_in = [
-                (override_lin/2) + (lin_velocity+1)/4,
+                (override_lin / 2) + (lin_velocity + 1) / 4,
                 override_ang * 2 + ang_velocity,
             ]
             action = [override_lin, override_ang]
@@ -53,7 +60,9 @@ class DEV_SIM(SIM):
         pose_vector = [np.cos(robot_state[2]).item(), np.sin(robot_state[2]).item()]
         cos, sin = self.cossin(pose_vector, goal_vector)
         collision = self.env.robot.collision
-        reward = self.get_reward(goal, collision, action, override_action, latest_scan, switch)
+        reward = self.get_reward(
+            goal, collision, action, override_action, latest_scan, switch
+        )
 
         return latest_scan, distance, cos, sin, collision, goal, a_in, reward
 
@@ -77,10 +86,12 @@ class DEV_SIM(SIM):
             elif collision:
                 return -100.0
             else:
-                deviation = np.linalg.norm([action[0] - override_action[0], action[1] - override_action[1]])
+                deviation = np.linalg.norm(
+                    [action[0] - override_action[0], action[1] - override_action[1]]
+                )
                 return action[0] - abs(action[1]) / 2 - deviation
         else:
             if collision:
                 return -100.0
             else:
-                return -(override_action[0]**2) - (override_action[1]**2)
+                return -(override_action[0] ** 2) - (override_action[1] ** 2)

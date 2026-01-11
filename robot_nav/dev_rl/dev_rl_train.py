@@ -1,10 +1,11 @@
-from robot_nav.models.CNNTD3.devCNNTD3 import devCNNTD3
+from robot_nav.dev_rl.CNNTD3.devCNNTD3 import devCNNTD3
 
 import torch
 import numpy as np
 from robot_nav.SIM_ENV.dev_sim import DEV_SIM
 from robot_nav.utils import get_buffer
 import math
+
 
 def main(args=None):
     """Main training function"""
@@ -67,7 +68,10 @@ def main(args=None):
         action = model.get_action(np.array(state), True)  # get an action from the model
 
         latest_scan, distance, cos, sin, collision, goal, a, reward = sim.step(
-            lin_velocity=a[0], ang_velocity=a[1], override_lin=action[0], override_ang=action[1]
+            lin_velocity=a[0],
+            ang_velocity=a[1],
+            override_lin=action[0],
+            override_ang=action[1],
         )  # get data from the environment
         next_state, terminal = model.prepare_state(
             latest_scan, distance, cos, sin, collision, goal, a
@@ -99,11 +103,16 @@ def main(args=None):
             epoch += 1
             evaluate(model, epoch, sim, eval_episodes=nr_eval_episodes)
 
-def compute_action(dist, sin_theta, cos_theta,
-                   k_v=0.8,      # linear gain
-                   k_w=1.5,      # angular gain
-                   v_max=0.5,    # max linear velocity (m/s)
-                   w_max=1):   # max angular velocity (rad/s)
+
+def compute_action(
+    dist,
+    sin_theta,
+    cos_theta,
+    k_v=0.8,  # linear gain
+    k_w=1.5,  # angular gain
+    v_max=0.5,  # max linear velocity (m/s)
+    w_max=1,
+):  # max angular velocity (rad/s)
     """
     Compute linear and angular velocity commands for a differential drive robot
     given polar coordinates of the goal.
@@ -120,7 +129,7 @@ def compute_action(dist, sin_theta, cos_theta,
     Returns:
         v, w: linear and angular velocities
     """
-    theta = math.atan2(sin_theta, cos_theta)   # in [-pi, pi]
+    theta = math.atan2(sin_theta, cos_theta)  # in [-pi, pi]
     w = k_w * theta
 
     v = k_v * dist
@@ -149,9 +158,11 @@ def evaluate(model, epoch, sim, eval_episodes=10):
                 latest_scan, distance, cos, sin, collision, goal, a
             )
             action = model.get_action(np.array(state), False)
-            # a_in = [(action[0] + 1) / 4, action[1]]
             latest_scan, distance, cos, sin, collision, goal, a, reward = sim.step(
-                lin_velocity=a[0], ang_velocity=a[1], override_lin=action[0], override_ang=action[1]
+                lin_velocity=a[0],
+                ang_velocity=a[1],
+                override_lin=action[0],
+                override_ang=action[1],
             )
             avg_reward += reward
             count += 1

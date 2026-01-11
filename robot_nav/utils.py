@@ -6,6 +6,7 @@ import torch
 from robot_nav.models.RCPG.RCPG import RCPG
 from robot_nav.replay_buffer import ReplayBuffer, RolloutReplayBuffer
 from robot_nav.models.PPO.PPO import PPO
+from robot_nav.models.CNNPPO.CNNPPO import CNNPPO
 
 
 class Pretraining:
@@ -143,7 +144,7 @@ def get_buffer(
     Returns:
         (object): The initialized and optionally pre-populated replay buffer.
     """
-    if isinstance(model, PPO):
+    if isinstance(model, PPO) or isinstance(model, CNNPPO):
         return model.buffer
 
     if isinstance(model, RCPG):

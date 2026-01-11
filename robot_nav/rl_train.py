@@ -1,5 +1,4 @@
 from robot_nav.models.CNNTD3.CNNTD3 import CNNTD3
-
 import torch
 import numpy as np
 from robot_nav.SIM_ENV.sim import SIM

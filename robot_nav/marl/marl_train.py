@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from robot_nav.models.MARL.marlTD3.marlTD3 import TD3
+from robot_nav.marl.marlTD3.marlTD3 import TD3
 
 import torch
 import numpy as np
@@ -55,7 +55,7 @@ def main(args=None):
 
     # ---- Instantiate simulation environment and model ----
     sim = MARL_SIM(
-        world_file="worlds/multi_robot_world.yaml",
+        world_file="../worlds/multi_robot_world.yaml",
         disable_plotting=True,
         reward_phase=1,
     )  # instantiate environment
