@@ -1,0 +1,241 @@
+{
+  "repo_notes": [
+    {
+      "content": ""
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "Introduce the DRL-robot-navigation-IR-SIM project, explaining its purpose as a Deep Reinforcement Learning system for robot navigation using the IR-SIM simulator, and providing a high-level architecture overview",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Getting Started",
+      "purpose": "Guide users through installation using Poetry, running the main training script, and monitoring with TensorBoard",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Core Training System",
+      "purpose": "Explain the main training orchestration, including the training loop structure (epochs, episodes, steps), state-action-reward cycle, and integration with models and environments",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Simulation Environments",
+      "purpose": "Document the SIM (single-agent) and MARL_SIM (multi-agent) environment wrappers around IR-SIM, including state observation processing, reward functions, and reset mechanics",
+      "parent": "Core Training System",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Data Management and Replay Buffers",
+      "purpose": "Describe the replay buffer implementations (ReplayBuffer, RolloutReplayBuffer, RolloutBuffer), the get_buffer factory function, and experience storage/sampling strategies for different algorithms",
+      "parent": "Core Training System",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Single-Agent Models",
+      "purpose": "Overview of the single-agent DRL model library, explaining the model taxonomy, evolutionary relationships (DDPG→TD3→CNNTD3→RCPG), and shared interfaces",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "TD3 and DDPG",
+      "purpose": "Document the Twin Delayed DDPG algorithm and base DDPG, including network architectures, training loop with target smoothing and delayed updates, and state preparation for 10-dimensional states",
+      "parent": "Single-Agent Models",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "CNNTD3",
+      "purpose": "Explain the CNN-enhanced TD3 model designed for 185-dimensional laser scan data, detailing the 1D convolutional layers for spatial feature extraction and its role as the primary model in rl_train.py",
+      "parent": "Single-Agent Models",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "RCPG",
+      "purpose": "Document the Recurrent Convolutional Policy Gradient model that adds LSTM/GRU/RNN layers to CNNTD3 for temporal modeling, including its specialized RolloutReplayBuffer for sequence sampling",
+      "parent": "Single-Agent Models",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "SAC",
+      "purpose": "Describe the Soft Actor-Critic algorithm with entropy regularization, including the DiagGaussianActor with SquashedNormal distribution and DoubleQCritic architecture",
+      "parent": "Single-Agent Models",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "PPO",
+      "purpose": "Explain the Proximal Policy Optimization on-policy algorithm, its clipped objective, RolloutBuffer for episodic collection, and action standard deviation decay mechanism",
+      "parent": "Single-Agent Models",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "HCM (Hardcoded Model)",
+      "purpose": "Document the hard-coded navigation model used for collecting collision data and pre-training datasets, including its action computation logic and sample saving functionality",
+      "parent": "Single-Agent Models",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Multi-Agent Reinforcement Learning",
+      "purpose": "Introduce the MARL capabilities of the system, explaining the multi-agent simulation environment, attention-based coordination mechanisms, and training differences from single-agent approaches",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "MARL Simulation Environment",
+      "purpose": "Detail the MARL_SIM class for multi-robot scenarios, including per-agent state processing, two-phase reward functions, connection matrices for communication topology, and conflict-free reset logic",
+      "parent": "Multi-Agent Reinforcement Learning",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "marlTD3 with Attention Mechanisms",
+      "purpose": "Explain the multi-agent TD3 implementation with hard-soft attention, the Actor and Critic architectures with attention encoders, In-Graph Attention and G2ANET, GoalAttentionLayer message passing, and auxiliary losses (BCE, entropy)",
+      "parent": "Multi-Agent Reinforcement Learning",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Environment Configuration",
+      "purpose": "Document the YAML configuration system for world setup, robot properties, sensor specifications (lidar2d), obstacle definitions, and evaluation point configurations",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Testing and Validation",
+      "purpose": "Overview of the comprehensive testing infrastructure using pytest, including unit tests for models, environments, and utilities, with CI/CD integration via GitHub Actions",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Model Testing",
+      "purpose": "Explain the test suite for validating model training capabilities, including parameterized tests for all algorithms, prefilled test data usage, and max bound variant testing",
+      "parent": "Testing and Validation",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Simulation and Environment Testing",
+      "purpose": "Document tests for SIM and MARL_SIM environments, including state retrieval, step execution, reset functionality, and the cossin utility function",
+      "parent": "Testing and Validation",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Buffer and Utility Testing",
+      "purpose": "Detail the testing framework for the get_buffer factory function, validating correct buffer type instantiation (ReplayBuffer, RolloutReplayBuffer, RolloutBuffer) based on model type",
+      "parent": "Testing and Validation",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Advanced Features",
+      "purpose": "Document advanced capabilities including max upper bound loss for Q-value regularization, pretraining from offline datasets, and model-specific architectural enhancements",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Max Upper Bound Loss",
+      "purpose": "Explain the optional Q-value bounding mechanism available for TD3, DDPG, and CNNTD3 to address overestimation bias, including the theoretical maximum calculation and loss formulation",
+      "parent": "Advanced Features",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Pretraining and Offline Learning",
+      "purpose": "Document the Pretraining class for loading offline experience data from YAML files, the get_max_bound utility, and integration with the get_buffer factory for model initialization",
+      "parent": "Advanced Features",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Development and Deployment",
+      "purpose": "Cover the development workflow including Poetry dependency management, project structure with pyproject.toml, CI/CD pipeline with GitHub Actions, and TensorBoard integration for training monitoring",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    }
+  ]
+}
