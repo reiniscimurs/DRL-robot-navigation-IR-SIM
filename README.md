@@ -1,3 +1,5 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/reiniscimurs/DRL-robot-navigation-IR-SIM)
+
 **DRL Robot navigation in IR-SIM**
 
 Deep Reinforcement Learning algorithm implementation for simulated robot navigation in IR-SIM. Using 2D laser sensor data
