@@ -23,8 +23,8 @@ class SIM_ENV(ABC):
         Returns:
             (tuple): (cosine, sine) of the angle between the vectors.
         """
-        vec1 = vec1 / np.linalg.norm(vec1)
-        vec2 = vec2 / np.linalg.norm(vec2)
+        vec1 = vec1 / (np.linalg.norm(vec1) + 0.00000000001)
+        vec2 = vec2 / (np.linalg.norm(vec2) + 0.00000000001)
         cos = np.dot(vec1, vec2)
         sin = vec1[0] * vec2[1] - vec1[1] * vec2[0]
         return cos, sin

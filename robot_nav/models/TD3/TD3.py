@@ -200,7 +200,7 @@ class TD3(object):
         """
         if add_noise:
             return (
-                self.act(obs) + np.random.normal(0, 0.2, size=self.action_dim)
+                self.act(obs) + np.random.normal(0, 0.15, size=self.action_dim)
             ).clip(-self.max_action, self.max_action)
         else:
             return self.act(obs)
@@ -321,6 +321,7 @@ class TD3(object):
             # Perform the gradient descent
             self.critic_optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
             self.critic_optimizer.step()
 
             if it % policy_freq == 0:
@@ -330,6 +331,7 @@ class TD3(object):
                 actor_grad = -actor_grad.mean()
                 self.actor_optimizer.zero_grad()
                 actor_grad.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
                 self.actor_optimizer.step()
 
                 # Use soft update to update the actor-target network parameters by
