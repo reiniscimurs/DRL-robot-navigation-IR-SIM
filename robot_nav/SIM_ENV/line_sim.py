@@ -140,6 +140,7 @@ class SIM(SIM_ENV):
         robot_goal=None,
         random_obstacles=False,
         random_obstacle_ids=None,
+        trajectory=None,
     ):
         """
         Reset the simulation environment, optionally setting robot and obstacle states.
@@ -149,11 +150,18 @@ class SIM(SIM_ENV):
             robot_goal (list or None): Goal state for the robot.
             random_obstacles (bool): Whether to randomly reposition obstacles.
             random_obstacle_ids (list or None): Specific obstacle IDs to randomize.
+            trajectory: New waypoints or a SplineTrajectory for this episode.
+                None keeps the current trajectory.
 
         Returns:
             (tuple): Initial observation after reset, including LIDAR scan, distance, cos/sin,
                    and reward-related flags and values.
         """
+        if trajectory is not None:
+            self.trajectory = (trajectory if isinstance(trajectory, SplineTrajectory)
+                               else SplineTrajectory(trajectory))
+            self._trajectory_plot_points = self.trajectory.sample_points().T
+
         if robot_state is None:
             if self.trajectory is None:
                 robot_state = [[5], [15 + random.uniform(-8, 8)], [random.uniform(-1.5, 1.5)]]
@@ -230,4 +238,4 @@ class SIM(SIM_ENV):
             (float): Computed reward for the current state.
         """
         on_line  = 1 if distance < 0.2 else 0
-        return 2*lin_velocity - 0.5*distance - abs(hd)  - abs(ang_velocity) + 2
+        return 2*lin_velocity - 1*distance - abs(hd)  - abs(ang_velocity) + 2

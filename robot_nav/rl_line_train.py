@@ -83,7 +83,8 @@ def main(args=None):
         )  # add experience to the replay buffer
         state = next_state
         if steps == max_steps:  # reset environment of terminal stat ereached, or max_steps were taken
-            state, a, reward = sim.reset()
+            random_trajectory = [[5, 15], [20 + np.random.randint(-5, 5), 15+ np.random.randint(-5, 5)], [35+ np.random.randint(-5, 5), 23+ np.random.randint(-5, 5)], [50+ np.random.randint(-5, 5), 10+ np.random.randint(-5, 5)], [65, 15+ np.random.randint(-5, 5)]]
+            state, a, reward = sim.reset(trajectory=random_trajectory)
             episode += 1
             if episode % train_every_n == 0:
                 model.train(
