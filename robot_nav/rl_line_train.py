@@ -3,6 +3,7 @@ from robot_nav.models.TD3.TD3 import TD3
 
 import torch
 import numpy as np
+from pathlib import Path
 from robot_nav.SIM_ENV.line_sim import SIM
 from utils import get_buffer
 
@@ -11,7 +12,11 @@ def main(args=None):
     """Main training function"""
     action_dim = 2  # number of actions produced by the model
     max_action = 1  # maximum absolute value of output actions
-    state_dim = 6  # number of input values in the neural network (vector length of state input)
+    sim = SIM(
+        world_file=str(Path(__file__).resolve().parent / "worlds/line_world.yaml"),
+        disable_plotting=False,
+    )
+    state_dim = sim.state_dim
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )  # using cuda if it is available, cpu otherwise
@@ -23,7 +28,7 @@ def main(args=None):
     train_every_n = 2  # train and update network parameters every n episodes
     training_iterations = 80  # how many batches to use for single training cycle
     batch_size = 64  # batch size for each training iteration
-    max_steps = 200  # maximum number of steps in single episode
+    max_steps = 400  # maximum number of steps in single episode
     steps = 0  # starting step number
     load_saved_buffer = False  # whether to load experiences from assets/data.yml
     pretrain = False  # whether to use the loaded experiences to pre-train the model (load_saved_buffer must be True)
@@ -42,9 +47,6 @@ def main(args=None):
         model_name="TD3",
     )  # instantiate a model
 
-    sim = SIM(
-        world_file="worlds/line_world.yaml", disable_plotting=False
-    )  # instantiate environment
     replay_buffer = get_buffer(
         model,
         sim,

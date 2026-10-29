@@ -17,7 +17,13 @@ robot:
     plot:
       show_trajectory: True
 
-obstacle:
-  - shape: { name: 'linestring', vertices: [ [ 5, 15 ], [ 100, 15 ] ] }  # vertices
-    kinematics: {name: 'static'}
-    state: [ 0, 0, 0 ]
+# Reference path configuration consumed by line_sim.SIM. The reference is drawn
+# as a spline overlay rather than a collision obstacle.
+custom:
+  trajectory:
+    - [5, 15]
+    - [20, 15]
+    - [35, 23]
+    - [50, 10]
+    - [65, 15]
+  lookahead_distances: [1, 3, 5]

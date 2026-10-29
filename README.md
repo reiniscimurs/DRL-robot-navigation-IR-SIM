@@ -10,7 +10,7 @@ and information about the goal point a robot learns to navigate to a specified p
 **Installation**
 
 * Package versioning is managed with poetry \
-`pip install poetry`
+`pipx install poetry`
 * Clone the repository \
 `git clone https://github.com/reiniscimurs/DRL-robot-navigation.git`
 * Navigate to the cloned location and install using poetry \
