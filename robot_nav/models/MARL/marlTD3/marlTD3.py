@@ -29,10 +29,10 @@ class Actor(nn.Module):
         policy_head (nn.Sequential): MLP mapping attended embeddings to actions in [-1, 1].
     """
 
-    def __init__(self, action_dim, embedding_dim, attention):
+    def __init__(self, action_dim, embedding_dim, attention, local_state_dim=5):
         super().__init__()
-        if attention == "igs":
-            self.attention = Attention(embedding_dim)
+        if attention in {"iga", "igs"}:
+            self.attention = Attention(embedding_dim, local_state_dim=local_state_dim)
         elif attention == "g2anet":
             self.attention = G2ANet(embedding_dim)  # ➊ edge classifier
         else:
@@ -62,7 +62,7 @@ class Actor(nn.Module):
                 action (Tensor): Predicted actions, shape (B*N, action_dim).
                 hard_logits (Tensor): Hard attention logits, shape (B*N, N-1).
                 pair_d (Tensor): Unnormalized pairwise distances, shape (B*N, N-1, 1).
-                mean_entropy (Tensor): Mean soft-attention entropy (scalar tensor).
+                mean_entropy (Tensor): IGA selector plus soft-attention entropy.
                 hard_weights (Tensor): Binary hard attention mask, shape (B, N, N).
                 combined_weights (Tensor): Soft weights per (receiver, sender),
                     shape (N, N*(N-1)) for each batch item (batched internally).
@@ -94,11 +94,11 @@ class Critic(nn.Module):
         layer_1..layer_6 (nn.Linear): MLP layers forming the twin Q networks.
     """
 
-    def __init__(self, action_dim, embedding_dim, attention):
+    def __init__(self, action_dim, embedding_dim, attention, local_state_dim=5):
         super(Critic, self).__init__()
         self.embedding_dim = embedding_dim
-        if attention == "igs":
-            self.attention = Attention(embedding_dim)
+        if attention in {"iga", "igs"}:
+            self.attention = Attention(embedding_dim, local_state_dim=local_state_dim)
         elif attention == "g2anet":
             self.attention = G2ANet(embedding_dim)  # ➊ edge classifier
         else:
@@ -140,7 +140,7 @@ class Critic(nn.Module):
             tuple:
                 Q1 (Tensor): First Q-value estimate, shape (B*N, 1).
                 Q2 (Tensor): Second Q-value estimate, shape (B*N, 1).
-                mean_entropy (Tensor): Mean soft-attention entropy (scalar tensor).
+                mean_entropy (Tensor): IGA selector plus soft-attention entropy.
                 hard_logits (Tensor): Hard attention logits, shape (B*N, N-1).
                 unnorm_rel_dist (Tensor): Unnormalized pairwise distances, shape (B*N, N-1, 1).
                 hard_weights (Tensor): Binary hard attention mask, shape (B, N, N).
@@ -223,15 +223,15 @@ class TD3(object):
         attention="igs",
     ):
         # Initialize the Actor network
-        if attention not in ["igs", "g2anet"]:
+        if attention not in ["iga", "igs", "g2anet"]:
             raise ValueError("unknown attention mechanism specified for TD3 model")
         self.num_robots = num_robots
         self.device = device
-        self.actor = Actor(action_dim, embedding_dim=256, attention=attention).to(
+        self.actor = Actor(action_dim, embedding_dim=256, attention=attention, local_state_dim=state_dim - 6).to(
             self.device
         )  # Using the updated Actor
         self.actor_target = Actor(
-            action_dim, embedding_dim=256, attention=attention
+            action_dim, embedding_dim=256, attention=attention, local_state_dim=state_dim - 6
         ).to(self.device)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
@@ -242,11 +242,11 @@ class TD3(object):
             self.policy_params + self.attn_params, lr=lr_actor
         )  # TD3 policy
 
-        self.critic = Critic(action_dim, embedding_dim=256, attention=attention).to(
+        self.critic = Critic(action_dim, embedding_dim=256, attention=attention, local_state_dim=state_dim - 6).to(
             self.device
         )  # Using the updated Critic
         self.critic_target = Critic(
-            action_dim, embedding_dim=256, attention=attention
+            action_dim, embedding_dim=256, attention=attention, local_state_dim=state_dim - 6
         ).to(self.device)
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = torch.optim.Adam(
@@ -257,6 +257,7 @@ class TD3(object):
         self.state_dim = state_dim
         self.writer = SummaryWriter(comment=model_name)
         self.iter_count = 0
+        self.gradient_steps = 0
         if load_model_name is None:
             load_model_name = model_name
         if load_model:
@@ -287,6 +288,7 @@ class TD3(object):
 
         return action.reshape(-1, 2), connection, combined_weights
 
+    @torch.no_grad()
     def act(self, state):
         """
         Compute the deterministic action from the current policy.
@@ -304,7 +306,7 @@ class TD3(object):
         state = torch.Tensor(state).to(self.device)
         # res = self.attention(state)
         action, connection, _, _, _, combined_weights = self.actor(state)
-        return action.cpu().data.numpy().flatten(), connection, combined_weights
+        return action.cpu().numpy().flatten(), connection, combined_weights
 
     # training cycle
     def train(
@@ -317,9 +319,11 @@ class TD3(object):
         policy_noise=0.2,
         noise_clip=0.5,
         policy_freq=2,
-        bce_weight=0.01,
-        entropy_weight=1,
-        connection_proximity_threshold=4,
+        communication_weight=0.01,
+        entropy_weight=0.01,
+        communication_warmup=1000,
+        entropy_decay_steps=10000,
+        final_entropy_weight=0.0,
         max_grad_norm=7.0,
     ):
         """
@@ -334,10 +338,14 @@ class TD3(object):
             policy_noise (float, optional): Std of target policy noise. Defaults to 0.2.
             noise_clip (float, optional): Clipping range for target noise. Defaults to 0.5.
             policy_freq (int, optional): Actor update period (in critic steps). Defaults to 2.
-            bce_weight (float, optional): Weight for hard-connection BCE loss. Defaults to 0.01.
-            entropy_weight (float, optional): Weight for attention entropy bonus. Defaults to 1.
-            connection_proximity_threshold (float, optional): Distance threshold for the
-                positive class when supervising hard connections. Defaults to 4.
+            communication_weight: Actor cost per mean peer connection probability.
+                The critic has no communication cost. Defaults to 0.01.
+            entropy_weight: Initial bonus for selector plus soft attention entropy.
+            communication_warmup: Gradient steps to ramp the cost from zero to full.
+                Zero enables full cost immediately.
+            entropy_decay_steps: Gradient steps to decay entropy to final_entropy_weight.
+                Zero disables decay. Schedules persist across train calls.
+            final_entropy_weight: Entropy bonus after decay. Defaults to zero.
             max_grad_norm (float, optional): Gradient clipping norm. Defaults to 7.0.
 
         Returns:
@@ -350,10 +358,18 @@ class TD3(object):
         av_critic_entropy = []
         av_actor_entropy = []
         av_actor_loss = 0
-        av_critic_bce_loss = []
-        av_actor_bce_loss = []
+        av_communication = []
+
+        if iterations < 1 or replay_buffer.size() < 1:
+            return
 
         for it in range(iterations):
+            progress = self.gradient_steps
+            cost_weight = communication_weight * (
+                min(progress / communication_warmup, 1.0) if communication_warmup > 0 else 1.0
+            )
+            fraction = min(progress / entropy_decay_steps, 1.0) if entropy_decay_steps > 0 else 0.0
+            bonus_weight = entropy_weight + fraction * (final_entropy_weight - entropy_weight)
             # sample a batch
             (
                 batch_states,
@@ -363,30 +379,31 @@ class TD3(object):
                 batch_next_states,
             ) = replay_buffer.sample_batch(batch_size)
 
+            sampled_size = len(batch_states)
             state = (
                 torch.Tensor(batch_states)
                 .to(self.device)
-                .view(batch_size, self.num_robots, self.state_dim)
+                .view(sampled_size, self.num_robots, self.state_dim)
             )
             next_state = (
                 torch.Tensor(batch_next_states)
                 .to(self.device)
-                .view(batch_size, self.num_robots, self.state_dim)
+                .view(sampled_size, self.num_robots, self.state_dim)
             )
             action = (
                 torch.Tensor(batch_actions)
                 .to(self.device)
-                .view(batch_size * self.num_robots, self.action_dim)
+                .view(sampled_size * self.num_robots, self.action_dim)
             )
             reward = (
                 torch.Tensor(batch_rewards)
                 .to(self.device)
-                .view(batch_size * self.num_robots, 1)
+                .view(sampled_size * self.num_robots, 1)
             )
             done = (
                 torch.Tensor(batch_dones)
                 .to(self.device)
-                .view(batch_size * self.num_robots, 1)
+                .view(sampled_size * self.num_robots, 1)
             )
 
             with torch.no_grad():
@@ -425,18 +442,8 @@ class TD3(object):
                 current_Q2, target_Q
             )
 
-            targets = (
-                unnorm_rel_dist.flatten() < connection_proximity_threshold
-            ).float()
-            flat_logits = hard_logits.flatten()
-            bce_loss = F.binary_cross_entropy_with_logits(flat_logits, targets)
-
-            av_critic_bce_loss.append(bce_loss)
-
-            total_loss = (
-                critic_loss - entropy_weight * mean_entropy + bce_weight * bce_loss
-            )
-            av_critic_entropy.append(mean_entropy)
+            total_loss = critic_loss - bonus_weight * mean_entropy
+            av_critic_entropy.append(mean_entropy.item())
 
             self.critic_optimizer.zero_grad()
             total_loss.backward()
@@ -452,24 +459,27 @@ class TD3(object):
                 action, hard_logits, unnorm_rel_dist, mean_entropy, hard_weights, _ = (
                     self.actor(state, detach_attn=False)
                 )
-                targets = (
-                    unnorm_rel_dist.flatten() < connection_proximity_threshold
-                ).float()
-                flat_logits = hard_logits.flatten()
-                bce_loss = F.binary_cross_entropy_with_logits(flat_logits, targets)
-
-                av_actor_bce_loss.append(bce_loss)
+                # IGA returns the two-class log-odds; sigmoid gives the
+                # underlying probability, independent of Gumbel noise.
+                probabilities = hard_logits.sigmoid().view(sampled_size, self.num_robots, -1)
+                if probabilities.shape[-1] == self.num_robots:
+                    peer_mask = ~torch.eye(self.num_robots, dtype=torch.bool, device=self.device)
+                    peers = probabilities[:, peer_mask]
+                else:  # G2ANet already omits self-connections.
+                    peers = probabilities.reshape(-1)
+                communication = peers.mean() if peers.numel() else hard_logits.sum() * 0.0
+                av_communication.append(communication.item())
 
                 actor_Q, _, _, _, _, _ = self.critic(state, action)
                 actor_loss = -actor_Q.mean()
                 total_loss = (
-                    actor_loss - entropy_weight * mean_entropy + bce_weight * bce_loss
+                    actor_loss - bonus_weight * mean_entropy + cost_weight * communication
                 )
-                av_actor_entropy.append(mean_entropy)
+                av_actor_entropy.append(mean_entropy.item())
 
                 self.actor_optimizer.zero_grad()
                 total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.policy_params, max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_grad_norm)
                 self.actor_optimizer.step()
 
                 av_actor_loss += total_loss.item()
@@ -489,6 +499,8 @@ class TD3(object):
                         tau * param.data + (1 - tau) * target_param.data
                     )
 
+            self.gradient_steps += 1
+
         self.iter_count += 1
         self.writer.add_scalar(
             "train/loss_total", av_loss / iterations, self.iter_count
@@ -506,22 +518,15 @@ class TD3(object):
             sum(av_actor_entropy) / len(av_actor_entropy),
             self.iter_count,
         )
-        self.writer.add_scalar(
-            "train/av_critic_bce_loss",
-            sum(av_critic_bce_loss) / len(av_critic_bce_loss),
-            self.iter_count,
-        )
-        self.writer.add_scalar(
-            "train/av_actor_bce_loss",
-            sum(av_actor_bce_loss) / len(av_actor_bce_loss),
-            self.iter_count,
-        )
+        self.writer.add_scalar("train/actor_connection_probability", sum(av_communication) / len(av_communication), self.iter_count)
+        self.writer.add_scalar("train/communication_weight", cost_weight, self.iter_count)
+        self.writer.add_scalar("train/entropy_weight", bonus_weight, self.iter_count)
         self.writer.add_scalar("train/avg_Q", av_Q / iterations, self.iter_count)
         self.writer.add_scalar("train/max_Q", max_Q, self.iter_count)
 
         self.writer.add_scalar(
             "train/actor_loss",
-            av_actor_loss / (iterations // policy_freq),
+            av_actor_loss / len(av_actor_entropy),
             self.iter_count,
         )
 

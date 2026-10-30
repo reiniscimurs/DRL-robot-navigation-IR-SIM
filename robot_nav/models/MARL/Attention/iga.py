@@ -37,7 +37,7 @@ def entropy_from_attention(attn_weights, target_nodes, num_nodes, eps=1e-10):
 
     # (Optional) Only average over nodes with at least one incoming edge
     mask = counts > 0
-    entropies = entropies[mask] / counts[mask]
+    entropies = entropies[mask]
     return (
         entropies.mean()
         if mask.any()
@@ -71,7 +71,7 @@ class GoalAttentionLayer(MessagePassing):
         )
         self._last_attn_weights = None
 
-    def forward(self, x, edge_index, edge_attr):
+    def forward(self, x, edge_index, edge_attr, edge_gate=None):
         """
         Run attention-based message passing.
 
@@ -88,10 +88,12 @@ class GoalAttentionLayer(MessagePassing):
                     shape (num_edges,). None if no edges.
         """
         q = self.q(x)
-        out = self.propagate(edge_index, x=q, edge_attr=edge_attr)
+        if edge_gate is None:
+            edge_gate = edge_attr.new_ones(edge_attr.shape[0])
+        out = self.propagate(edge_index, x=q, edge_attr=edge_attr, edge_gate=edge_gate)
         return out, self._last_attn_weights
 
-    def message(self, x_i, edge_attr, index, ptr, size_i):
+    def message(self, x_i, edge_attr, edge_gate, index, ptr, size_i):
         """
         Compute per-edge messages using attention weights.
 
@@ -110,8 +112,8 @@ class GoalAttentionLayer(MessagePassing):
         attention_input = torch.cat([x_i, k], dim=-1)
         scores = self.attn_score_layer(attention_input).squeeze(-1)
         attn_weights = softmax(scores, index)  # index = target node index
-        self._last_attn_weights = attn_weights.detach()
-        return v * attn_weights.unsqueeze(-1)
+        self._last_attn_weights = attn_weights
+        return v * (attn_weights * edge_gate).unsqueeze(-1)
 
     def aggregate(self, inputs, index, ptr=None, dim_size=None):
         """
@@ -155,12 +157,13 @@ class Attention(nn.Module):
         node_update (nn.Sequential): Optional node-update MLP (unused in forward aggregation).
     """
 
-    def __init__(self, embedding_dim):
+    def __init__(self, embedding_dim, local_state_dim=5):
         """
         Initialize the attention module.
 
         Args:
             embedding_dim (int): Output embedding dimension per agent.
+            local_state_dim (int): Number of local features between pose and target.
         """
         super(Attention, self).__init__()
         self.embedding_dim = embedding_dim
@@ -176,7 +179,7 @@ class Attention(nn.Module):
             node_dim=embedding_dim, edge_dim=10, out_dim=embedding_dim
         )
 
-        self.embedding1 = nn.Linear(5, 128)
+        self.embedding1 = nn.Linear(local_state_dim, 128)
         nn.init.kaiming_uniform_(self.embedding1.weight, nonlinearity="leaky_relu")
         self.embedding2 = nn.Linear(128, embedding_dim)
         nn.init.kaiming_uniform_(self.embedding2.weight, nonlinearity="leaky_relu")
@@ -212,7 +215,7 @@ class Attention(nn.Module):
         Encode per-agent features with a two-layer MLP.
 
         Args:
-            embed (Tensor): Raw agent features of shape (B*N, 5).
+            embed (Tensor): Raw local agent features of shape (B*N, local_state_dim).
 
         Returns:
             Tensor: Encoded embeddings of shape (B*N, embedding_dim).
@@ -236,7 +239,7 @@ class Attention(nn.Module):
                 hard_logits (Tensor): Logits for hard attention (keep class index 1),
                     shape (B*N, N-1).
                 unnorm_rel_dist (Tensor): Unnormalized pairwise distances, shape (B*N, N-1, 1).
-                mean_entropy (Tensor): Scalar mean entropy of soft attention per batch.
+                mean_entropy (Tensor): Selector plus candidate-peer soft entropy.
                 hard_weights (Tensor): Binary hard attention mask, shape (B, N, N).
                 comb_w (Tensor): Combined soft weights per (receiver, sender),
                     shape (N, N*(N-1)).
@@ -246,7 +249,7 @@ class Attention(nn.Module):
         batch_size, n_agents, _ = embedding.shape
 
         # Extract sub-features
-        embed = embedding[:, :, 4:9].reshape(batch_size * n_agents, -1)
+        embed = embedding[:, :, 4:-2].reshape(batch_size * n_agents, -1)
         position = embedding[:, :, :2].reshape(batch_size, n_agents, 2)
         heading = embedding[:, :, 2:4].reshape(
             batch_size, n_agents, 2
@@ -314,10 +317,25 @@ class Attention(nn.Module):
         # Hard attention forward
         h_hard = self.hard_mlp(hard_input)
         hard_logits = self.hard_encoding(h_hard)
-        hard_weights = F.gumbel_softmax(hard_logits, hard=False, tau=0.2, dim=-1)[
-            ..., 1
-        ].unsqueeze(2)
+        # Entropy of the actual binary selector distribution, before Gumbel
+        # sampling/temperature. Self-connections are never selectable.
+        selector_log_probs = F.log_softmax(hard_logits, dim=-1)
+        selector_entropies = -(selector_log_probs.exp() * selector_log_probs).sum(-1)
+        peer_mask = ~torch.eye(n_agents, dtype=torch.bool, device=embedding.device)
+        selector_entropies = selector_entropies.view(batch_size, n_agents, n_agents)
+        selector_entropy = (
+            selector_entropies[:, peer_mask].mean()
+            if n_agents > 1 else hard_logits.sum() * 0.0
+        )
+        hard_probabilities = (
+            F.gumbel_softmax(hard_logits, hard=False, tau=0.2, dim=-1)
+            if self.training else hard_logits.softmax(dim=-1)
+        )
+        hard_weights = hard_probabilities[..., 1].unsqueeze(2)
         hard_weights = hard_weights.view(batch_size, n_agents, n_agents)
+        if not self.training:
+            hard_weights = (hard_weights > 0.5).to(embedding.dtype)
+        hard_weights = hard_weights * peer_mask
 
         unnorm_rel_dist = torch.linalg.vector_norm(rel_vec, dim=-1, keepdim=True)
         unnorm_rel_dist = unnorm_rel_dist.reshape(batch_size * n_agents, n_agents, 1)
@@ -349,18 +367,21 @@ class Attention(nn.Module):
         for b in range(batch_size):
             edge_index_list = []
             edge_attr_list = []
+            edge_gate_list = []
 
             # Agent embeddings for this scenario
             node_feats = agent_embed[b]  # [n, emb_dim]
             soft_feats = soft_edge_features[b]  # [n, n, edge_dim]
             hard_mask = hard_weights[b]  # [n, n]
 
-            # Only build edges where hard attention mask is active, no self-loops
+            # Train on all peer edges; gates multiply messages after softmax.
+            # Keep the same normalization at evaluation, with binary gates.
             for i in range(n_agents):
                 for j in range(n_agents):
-                    if i != j and hard_mask[i, j] > 0.5:
+                    if i != j:
                         edge_index_list.append([j, i])  # from j (src) to i (tgt)
                         edge_attr_list.append(soft_feats[i, j])
+                        edge_gate_list.append(hard_mask[i, j])
 
             # Edge tensors
             if edge_index_list:
@@ -378,9 +399,12 @@ class Attention(nn.Module):
                     device=embedding.device,
                 )
 
+            edge_gates = (torch.stack(edge_gate_list) if edge_gate_list
+                          else embedding.new_empty(0))
+
             # Message passing: edge-to-node aggregation only
             attn_out, attn_weights = self.message_graph(
-                node_feats, edge_index, edge_attr
+                node_feats, edge_index, edge_attr, edge_gates
             )  # [n, embedding_dim]
             attn_outputs.append(attn_out)
             batch_entropy = entropy_from_attention(
@@ -394,7 +418,7 @@ class Attention(nn.Module):
             for idx in range(edge_index.shape[1]):
                 j = edge_index[0, idx].item()  # sender/source
                 i = edge_index[1, idx].item()  # receiver/target
-                combined_weights[i, j] = attn_weights[idx]
+                combined_weights[i, j] = attn_weights[idx] * edge_gates[idx]
             combined_w.append(combined_weights)
 
         # Re-stack results for full batch (shape: [batch_size, n_agents, embedding_dim])
@@ -408,12 +432,14 @@ class Attention(nn.Module):
 
         x = F.leaky_relu(self.decode_1(concat_embed))
         att_embedding = F.leaky_relu(self.decode_2(x))
-        mean_entropy = torch.stack(entropy_list).mean()
+        # Both terms retain gradients: exploration of connection decisions and
+        # diversity of attention among selected incoming peers.
+        mean_entropy = selector_entropy + torch.stack(entropy_list).mean()
         comb_w = torch.stack(combined_w, dim=1).reshape(n_agents, -1)
 
         return (
             att_embedding,
-            hard_logits[..., 1],
+            hard_logits[..., 1] - hard_logits[..., 0],
             unnorm_rel_dist,
             mean_entropy,
             hard_weights,

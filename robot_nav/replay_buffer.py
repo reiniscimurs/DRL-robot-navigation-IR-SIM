@@ -219,3 +219,19 @@ class RolloutReplayBuffer(object):
         """
         self.buffer.clear()
         self.count = 0
+
+
+class JointReplayBuffer(ReplayBuffer):
+    """One transition per scene tick; never sample robots independently.
+
+    Samples have shapes (B,N,D), (B,N,A), (B,N), (B,N), (B,N,D).
+    Copies protect stored scenes from later environment/caller mutations.
+    """
+
+    def add(self, s, a, r, t, s2):
+        s, a, r, t, s2 = [np.array(v, copy=True) for v in (s, a, r, t, s2)]
+        if (s.ndim != 2 or s2.shape != s.shape or a.ndim != 2
+                or a.shape[0] != len(s) or r.shape != (len(s),)
+                or t.shape != (len(s),)):
+            raise ValueError("Expected synchronized states/actions and per-agent rewards/dones")
+        super().add(s, a, r, t, s2)

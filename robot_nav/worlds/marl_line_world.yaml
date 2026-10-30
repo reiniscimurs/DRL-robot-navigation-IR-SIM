@@ -1,0 +1,24 @@
+world:
+  height: 30
+  width: 70
+  step_time: 0.3
+  sample_time: 0.3
+  collision_mode: 'unobstructed'
+robot:
+  - number: 3
+    color: ['royalblue', 'red', 'green']
+    kinematics: {name: 'diff'}
+    shape: {name: 'circle', radius: 0.2}
+    vel_min: [0, -1.0]
+    vel_max: [1.0, 1.0]
+    state: [5, 15, 0]
+    arrive_mode: position
+    goal_threshold: 0.3
+    plot:
+      show_trajectory: True
+custom:
+  lookahead_distances: [1, 3, 5]
+  trajectories:
+    - [[5, 10], [20, 14], [35, 20], [50, 12], [65, 15]]
+    - [[5, 15], [20, 15], [35, 15], [50, 15], [65, 20]]
+    - [[5, 20], [20, 16], [35, 10], [50, 18], [65, 10]]
