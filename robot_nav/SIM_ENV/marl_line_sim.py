@@ -120,7 +120,7 @@ class MARL_LINE_SIM:
             outside = not (self.env._world.x_range[0] <= x <= self.env._world.x_range[1]
                            and self.env._world.y_range[0] <= y <= self.env._world.y_range[1])
             collision = bool(robot.collision)
-            reward = SIM.get_reward(distance, hd, *action) - 20 * collision
+            reward = SIM.get_reward(distance, hd, *action) - 100 * collision
             states.append(state)
             rewards.append(reward)
             terminals.append(collision or reached or outside)

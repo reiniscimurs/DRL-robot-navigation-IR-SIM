@@ -167,6 +167,7 @@ class Attention(nn.Module):
         """
         super(Attention, self).__init__()
         self.embedding_dim = embedding_dim
+        self.forced_connection_probability = 0.0
 
         self.node_update = nn.Sequential(
             nn.Linear(embedding_dim * 2, embedding_dim),
@@ -335,6 +336,9 @@ class Attention(nn.Module):
         hard_weights = hard_weights.view(batch_size, n_agents, n_agents)
         if not self.training:
             hard_weights = (hard_weights > 0.5).to(embedding.dtype)
+        elif self.forced_connection_probability > 0:
+            forced = torch.rand_like(hard_weights) < self.forced_connection_probability
+            hard_weights = torch.where(forced, torch.ones_like(hard_weights), hard_weights)
         hard_weights = hard_weights * peer_mask
 
         unnorm_rel_dist = torch.linalg.vector_norm(rel_vec, dim=-1, keepdim=True)

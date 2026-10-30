@@ -234,6 +234,8 @@ class TD3(object):
             action_dim, embedding_dim=256, attention=attention, local_state_dim=state_dim - 6
         ).to(self.device)
         self.actor_target.load_state_dict(self.actor.state_dict())
+        if isinstance(self.actor.attention, Attention):
+            self.actor.attention.forced_connection_probability = 0.5
 
         self.attn_params = list(self.actor.attention.parameters())
         self.policy_params = list(self.actor.policy_head.parameters())
@@ -321,10 +323,12 @@ class TD3(object):
         policy_freq=2,
         communication_weight=0.01,
         entropy_weight=0.01,
-        communication_warmup=1000,
+        communication_warmup=10000,
         entropy_decay_steps=10000,
         final_entropy_weight=0.0,
         max_grad_norm=7.0,
+        forced_connection_probability=0.5,
+        forced_connection_decay_steps=10000,
     ):
         """
         Run a TD3 training loop over sampled mini-batches.
@@ -347,6 +351,9 @@ class TD3(object):
                 Zero disables decay. Schedules persist across train calls.
             final_entropy_weight: Entropy bonus after decay. Defaults to zero.
             max_grad_norm (float, optional): Gradient clipping norm. Defaults to 7.0.
+            forced_connection_probability: Initial actor peer-link exploration probability.
+            forced_connection_decay_steps: Steps to decay forced links to zero.
+                Zero disables forced links. Critic and target gates are unaffected.
 
         Returns:
             None
@@ -363,8 +370,21 @@ class TD3(object):
         if iterations < 1 or replay_buffer.size() < 1:
             return
 
+        if not 0 <= forced_connection_probability <= 1:
+            raise ValueError("forced_connection_probability must be between zero and one")
+        if forced_connection_decay_steps < 0:
+            raise ValueError("forced_connection_decay_steps must be nonnegative")
+
         for it in range(iterations):
             progress = self.gradient_steps
+            if isinstance(self.actor.attention, Attention):
+                fraction_remaining = (
+                    max(1 - progress / forced_connection_decay_steps, 0.0)
+                    if forced_connection_decay_steps > 0 else 0.0
+                )
+                self.actor.attention.forced_connection_probability = (
+                    forced_connection_probability * fraction_remaining
+                )
             cost_weight = communication_weight * (
                 min(progress / communication_warmup, 1.0) if communication_warmup > 0 else 1.0
             )
@@ -500,6 +520,18 @@ class TD3(object):
                     )
 
             self.gradient_steps += 1
+
+        if isinstance(self.actor.attention, Attention):
+            self.actor.attention.forced_connection_probability = (
+                forced_connection_probability
+                * max(1 - self.gradient_steps / forced_connection_decay_steps, 0.0)
+                if forced_connection_decay_steps > 0 else 0.0
+            )
+            self.writer.add_scalar(
+                "train/forced_connection_probability",
+                self.actor.attention.forced_connection_probability,
+                self.iter_count + 1,
+            )
 
         self.iter_count += 1
         self.writer.add_scalar(
