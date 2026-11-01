@@ -157,16 +157,20 @@ class Attention(nn.Module):
         node_update (nn.Sequential): Optional node-update MLP (unused in forward aggregation).
     """
 
-    def __init__(self, embedding_dim, local_state_dim=5):
+    def __init__(self, embedding_dim, local_state_dim=5, selector_temperature=0.8):
         """
         Initialize the attention module.
 
         Args:
             embedding_dim (int): Output embedding dimension per agent.
             local_state_dim (int): Number of local features between pose and target.
+            selector_temperature (float): Positive Gumbel temperature during training.
         """
         super(Attention, self).__init__()
+        if not np.isfinite(selector_temperature) or selector_temperature <= 0:
+            raise ValueError("selector_temperature must be finite and positive")
         self.embedding_dim = embedding_dim
+        self.selector_temperature = selector_temperature
         self.forced_connection_probability = 0.0
 
         self.node_update = nn.Sequential(
@@ -329,7 +333,7 @@ class Attention(nn.Module):
             if n_agents > 1 else hard_logits.sum() * 0.0
         )
         hard_probabilities = (
-            F.gumbel_softmax(hard_logits, hard=False, tau=0.2, dim=-1)
+            F.gumbel_softmax(hard_logits, hard=False, tau=self.selector_temperature, dim=-1)
             if self.training else hard_logits.softmax(dim=-1)
         )
         hard_weights = hard_probabilities[..., 1].unsqueeze(2)

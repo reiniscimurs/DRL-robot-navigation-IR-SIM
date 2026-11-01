@@ -110,12 +110,12 @@ def evaluate(model, epoch, sim, eval_episodes=10):
     print("..............................................")
     print(f"Epoch {epoch}. Evaluating scenarios")
     avg_reward = 0.0
-    col = 0
-    goals = 0
+    collision_episodes = 0
     for _ in range(eval_episodes):
         count = 0
         state, action, reward = sim.reset()
         done = False
+        collided = False
         while not done and count < 501:
             action = model.get_action(np.array(state), False)
             a_in = [(action[0] + 1) / 4, action[1]]
@@ -123,11 +123,17 @@ def evaluate(model, epoch, sim, eval_episodes=10):
                 lin_velocity=a_in[0], ang_velocity=a_in[1]
             )
             avg_reward += reward
+            collided |= bool(sim.env.robot_list[0].collision)
             count += 1
+        collision_episodes += int(collided)
     avg_reward /= eval_episodes
     print(f"Average Reward: {avg_reward}")
+    print(f"Collision episodes: {collision_episodes}/{eval_episodes} "
+          f"({collision_episodes / eval_episodes:.1%})")
     print("..............................................")
     model.writer.add_scalar("eval/avg_reward", avg_reward, epoch)
+    model.writer.add_scalar("eval/collision_episodes", collision_episodes, epoch)
+    model.writer.add_scalar("eval/collision_rate", collision_episodes / eval_episodes, epoch)
 
 
 if __name__ == "__main__":

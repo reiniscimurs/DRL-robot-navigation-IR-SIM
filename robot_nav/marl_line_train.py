@@ -20,22 +20,30 @@ def physical_actions(actions):
 
 def evaluate(model, epoch, sim, eval_episodes=10, max_steps=400):
     total = 0.0
+    collision_episodes = 0
     was_training = model.actor.training
     model.actor.eval()
     try:
         for _ in range(eval_episodes):
             state = sim.reset(randomize=False)
+            collided = False
             for _ in range(max_steps):
                 actions, _, weights = model.get_action(state, False)
                 state, rewards, terminals = sim.step(physical_actions(actions), weights)
                 total += rewards.mean()
+                collided |= any(bool(robot.collision) for robot in sim.env.robot_list)
                 if terminals.any():
                     break
+            collision_episodes += int(collided)
     finally:
         model.actor.train(was_training)
     average = total / eval_episodes
     model.writer.add_scalar("eval/avg_reward", average, epoch)
-    print(f"Epoch {epoch}: average reward per robot {average:.3f}")
+    model.writer.add_scalar("eval/collision_episodes", collision_episodes, epoch)
+    model.writer.add_scalar("eval/collision_rate", collision_episodes / eval_episodes, epoch)
+    print(f"Epoch {epoch}: average reward per robot {average:.3f}; "
+          f"collision episodes {collision_episodes}/{eval_episodes} "
+          f"({collision_episodes / eval_episodes:.1%})")
     return average
 
 

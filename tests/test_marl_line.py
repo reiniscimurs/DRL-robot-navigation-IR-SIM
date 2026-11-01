@@ -7,6 +7,69 @@ from robot_nav.replay_buffer import JointReplayBuffer
 from robot_nav.SIM_ENV.marl_line_sim import MARL_LINE_SIM
 
 
+def test_avoidance_reward_allows_moving_detour_without_rewarding_waiting():
+    reward = MARL_LINE_SIM.get_reward
+    assert reward(0, 0, 0, 0) == 0
+    assert reward(0, 0, 0.5, 0) == pytest.approx(1)
+    assert reward(0.25, 0.15, 0.5, 0.5) > reward(0, 0, 0, 0)
+    assert reward(0.25, -0.15, 0.5, -0.5) == reward(0.25, 0.15, 0.5, 0.5)
+    assert reward(1, 0.8, 0.5, 0.5) < reward(0.25, 0.15, 0.5, 0.5)
+
+
+def test_nearest_robot_penalty_is_small_bounded_and_increases_with_proximity():
+    reward = MARL_LINE_SIM.get_reward
+    baseline = reward(0, 0, 0.5, 0)
+    penalties = [baseline - reward(0, 0, 0.5, 0, d)
+                 for d in (3, 2, 1, 0.5, 0)]
+    assert penalties == pytest.approx([0, 0, 0.025, 0.05625, 0.1])
+
+
+def test_scene_reward_uses_nearest_peer_and_excludes_self():
+    sim = MARL_LINE_SIM(disable_plotting=True)
+    try:
+        sim.reset(randomize=False)
+        # Isolate proximity shaping from collisions and keep the third peer far away.
+        sim.env.robot_list[1].set_state(sim.env.robot_list[0].state.copy()
+                                       + np.array([[1.0], [0.0], [0.0]]))
+        state, rewards, _ = sim._observe(np.zeros((3, 2)))
+        base = sim.get_reward(state[0, 4], state[0, 9], 0, 0)
+        assert rewards[0] == pytest.approx(base - 0.025, abs=1e-6)
+        far_base = sim.get_reward(state[2, 4], state[2, 9], 0, 0)
+        assert rewards[2] == pytest.approx(far_base, abs=1e-6)
+    finally:
+        sim.env.end()
+
+
+def test_evaluation_counts_collision_episodes_without_counting_goal_termination():
+    from types import SimpleNamespace
+    from robot_nav.marl_line_train import evaluate
+
+    class Scene:
+        def __init__(self):
+            self.episode = 0
+            self.env = SimpleNamespace(robot_list=[SimpleNamespace(collision=False)] * 2)
+
+        def reset(self, randomize=False):
+            self.episode += 1
+            return np.zeros((2, 18))
+
+        def step(self, actions, weights):
+            for robot in self.env.robot_list:
+                robot.collision = self.episode == 1
+            return np.zeros((2, 18)), np.ones(2), np.ones(2, dtype=bool)
+
+    logged = {}
+    model = SimpleNamespace(
+        actor=torch.nn.Identity(),
+        writer=SimpleNamespace(add_scalar=lambda tag, value, epoch: logged.update({tag: value})),
+        get_action=lambda state, noise: (np.zeros((2, 2)), None, None),
+    )
+    assert evaluate(model, 1, Scene(), eval_episodes=2) == 1
+    assert logged["eval/collision_episodes"] == 1
+    assert logged["eval/collision_rate"] == 0.5
+    assert model.actor.training
+
+
 def test_joint_replay_keeps_scene_alignment_and_copies():
     replay = JointReplayBuffer(3)
     states = np.arange(54).reshape(3, 18)

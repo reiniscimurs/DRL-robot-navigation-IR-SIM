@@ -96,9 +96,30 @@ class MARL_LINE_SIM:
                     alpha=0.2 + 0.8 * strength, refresh=True, zorder=4,
                 )
 
+    @staticmethod
+    def get_reward(distance, hd, lin_velocity, ang_velocity, nearest_robot_distance=np.inf):
+        """Reward speed while allowing modest deviations for avoidance.
+
+        Path errors up to 0.3 m and heading errors up to 0.2 rad are free.
+        Larger errors retain a restoring penalty; steering is lightly penalized.
+        Collision penalties are applied separately in ``_observe``.
+        Nearest-peer centre distance adds at most 0.1 penalty, with a
+        quadratic increase inside 2 m and zero penalty outside that range.
+        """
+        return (2 * lin_velocity
+                - 0.5 * max(0.0, distance - 0.3)
+                - 0.5 * max(0.0, abs(hd) - 0.2)
+                - 0.1 * abs(ang_velocity)
+                - 0.1 * np.clip(1 - nearest_robot_distance / 2.0, 0, 1) ** 2)
+
     def _observe(self, actions):
         states, rewards, terminals = [], [], []
-        for robot, path, action in zip(self.env.robot_list, self.trajectories, actions):
+        positions = np.asarray([robot.state[:2].reshape(2) for robot in self.env.robot_list])
+        pair_distances = np.linalg.norm(positions[:, None] - positions[None, :], axis=-1)
+        np.fill_diagonal(pair_distances, np.inf)
+        nearest_distances = pair_distances.min(axis=1)
+        for robot, path, action, nearest in zip(
+                self.env.robot_list, self.trajectories, actions, nearest_distances):
             x, y, theta = robot.state[:3].reshape(-1)
             position = np.array([x, y])
             projection, progress = path.project(position)
@@ -120,7 +141,7 @@ class MARL_LINE_SIM:
             outside = not (self.env._world.x_range[0] <= x <= self.env._world.x_range[1]
                            and self.env._world.y_range[0] <= y <= self.env._world.y_range[1])
             collision = bool(robot.collision)
-            reward = SIM.get_reward(distance, hd, *action) - 100 * collision
+            reward = self.get_reward(distance, hd, *action, nearest) - 100 * collision
             states.append(state)
             rewards.append(reward)
             terminals.append(collision or reached or outside)

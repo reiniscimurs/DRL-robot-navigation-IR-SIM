@@ -235,7 +235,7 @@ class TD3(object):
         ).to(self.device)
         self.actor_target.load_state_dict(self.actor.state_dict())
         if isinstance(self.actor.attention, Attention):
-            self.actor.attention.forced_connection_probability = 0.5
+            self.actor.attention.forced_connection_probability = 0.1
 
         self.attn_params = list(self.actor.attention.parameters())
         self.policy_params = list(self.actor.policy_head.parameters())
@@ -321,13 +321,13 @@ class TD3(object):
         policy_noise=0.2,
         noise_clip=0.5,
         policy_freq=2,
-        communication_weight=0.01,
+        communication_weight=0.000,
         entropy_weight=0.01,
         communication_warmup=10000,
         entropy_decay_steps=10000,
         final_entropy_weight=0.0,
         max_grad_norm=7.0,
-        forced_connection_probability=0.5,
+        forced_connection_probability=0.1,
         forced_connection_decay_steps=10000,
     ):
         """
