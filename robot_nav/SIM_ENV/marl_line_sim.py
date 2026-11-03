@@ -110,7 +110,7 @@ class MARL_LINE_SIM:
                 - 0.5 * max(0.0, distance - 0.3)
                 - 0.5 * max(0.0, abs(hd) - 0.2)
                 - 0.1 * abs(ang_velocity)
-                - 0.1 * np.clip(1 - nearest_robot_distance / 2.0, 0, 1) ** 2)
+                - 12 * np.clip(1 - nearest_robot_distance / 5.0, 0, 1) ** 2)
 
     def _observe(self, actions):
         states, rewards, terminals = [], [], []
