@@ -321,7 +321,7 @@ class TD3(object):
         policy_noise=0.2,
         noise_clip=0.5,
         policy_freq=2,
-        communication_weight=0.000,
+        communication_weight=0.0005,
         entropy_weight=0.01,
         communication_warmup=10000,
         entropy_decay_steps=10000,
